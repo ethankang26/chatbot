@@ -11,21 +11,41 @@
         .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; line-height: 1.4; }
         .user-message { background-color: #007bff; color: white; margin-left: auto; width: fit-content; max-width: 70%; text-align: left; }
         .bot-message { background-color: #e9e9eb; color: #333; width: fit-content; max-width: 70%; text-align: left; }
-        #input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
+        #input-area { display: flex; flex-direction: column; padding: 15px; border-top: 1px solid #ddd; }
+        .input-row { display: flex; margin-bottom: 10px; }
         #question-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-right: 10px; }
         #send-button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
         #send-button:hover { background-color: #0056b3; }
         .typing-indicator { font-style: italic; color: #aaa; padding: 5px 0; }
+        #image-upload-container { display: flex; align-items: center; }
+        #upload-button { background-color: #28a745; color: white; border: none; border-radius: 4px; padding: 5px 10px; cursor: pointer; margin-right: 10px; }
+        #upload-button:hover { background-color: #218838; }
+        #image-preview { max-width: 100px; max-height: 100px; object-fit: contain; display: none; margin-right: 10px; }
+        #image-info { font-size: 12px; color: #666; }
+        .image-thumbnail { max-width: 200px; max-height: 150px; display: block; margin: 5px 0; border-radius: 4px; }
+        #clear-image { color: #dc3545; cursor: pointer; font-size: 12px; margin-left: 10px; }
+        #file-input { display: none; }
+        .file-upload-label { display: inline-block; padding: 6px 12px; cursor: pointer; background-color: #28a745; color: white; border-radius: 4px; }
+        .file-upload-label:hover { background-color: #218838; }
     </style>
 </head>
 <body>
     <div id="chat-container">
         <div id="chat-output">
-            <div class="bot-message">Hello! Ask me about mortgages or search Reddit discussions.</div>
+            <div class="bot-message">Hello! Ask me about mortgages or search Reddit discussions. You can also upload an image with text for me to analyze.</div>
         </div>
         <div id="input-area">
-            <input type="text" id="question-input" placeholder="Ask a question...">
-            <button id="send-button">Send</button>
+            <div class="input-row" id="image-upload-container">
+                <label for="file-input" class="file-upload-label">Upload Image</label>
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg">
+                <img id="image-preview">
+                <span id="image-info"></span>
+                <span id="clear-image" style="display: none;">❌</span>
+            </div>
+            <div class="input-row">
+                <input type="text" id="question-input" placeholder="Ask a question...">
+                <button id="send-button">Send</button>
+            </div>
         </div>
     </div>
 
@@ -33,11 +53,27 @@
         const chatOutput = document.getElementById('chat-output');
         const questionInput = document.getElementById('question-input');
         const sendButton = document.getElementById('send-button');
+        const fileInput = document.getElementById('file-input');
+        const imagePreview = document.getElementById('image-preview');
+        const imageInfo = document.getElementById('image-info');
+        const clearImage = document.getElementById('clear-image');
+        
+        let currentImageFile = null;
+        let extractedText = null;
 
-        function addMessage(text, sender) {
+        function addMessage(text, sender, imageUrl = null) {
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
             messageDiv.textContent = text;
+            
+            // If there's an image, add it to the message
+            if (imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.classList.add('image-thumbnail');
+                chatOutput.appendChild(img);
+            }
+            
             chatOutput.appendChild(messageDiv);
             chatOutput.scrollTop = chatOutput.scrollHeight; // Scroll to bottom
         }
@@ -59,22 +95,99 @@
                 }
             }
         }
+        
+        // Handle file selection
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+            if (!validTypes.includes(file.type)) {
+                alert('Please select a valid image file (JPEG, JPG, or PNG)');
+                return;
+            }
+            
+            currentImageFile = file;
+            
+            // Display image preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+                imageInfo.textContent = file.name;
+                clearImage.style.display = 'inline';
+            };
+            reader.readAsDataURL(file);
+            
+            // Upload and process the image
+            uploadImage(file);
+        });
+        
+        // Clear the selected image
+        clearImage.addEventListener('click', function() {
+            currentImageFile = null;
+            extractedText = null;
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
+            imageInfo.textContent = '';
+            clearImage.style.display = 'none';
+            fileInput.value = '';
+        });
+        
+        // Upload and get base64 data from image
+        async function uploadImage(imageFile) {
+            const formData = new FormData();
+            formData.append('file', imageFile);
+            
+            try {
+                imageInfo.textContent = 'Processing image...';
+                
+                const response = await fetch('/upload-image', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    extractedText = data.image_data;
+                    imageInfo.textContent = `${imageFile.name} (Ready to analyze)`;
+                } else {
+                    imageInfo.textContent = `${imageFile.name} (Error: ${data.message})`;
+                    extractedText = null;
+                }
+            } catch (error) {
+                console.error('Error uploading image:', error);
+                imageInfo.textContent = `Error processing image`;
+                extractedText = null;
+            }
+        }
 
         async function sendMessage() {
             const question = questionInput.value.trim();
             if (!question) return;
 
-            addMessage(question, 'user');
+            // Create image URL for preview if we have an image
+            const imageUrl = currentImageFile ? URL.createObjectURL(currentImageFile) : null;
+            
+            addMessage(question, 'user', imageUrl);
             questionInput.value = ''; // Clear input
             showTypingIndicator(true);
 
             try {
+                const payload = { question: question };
+                
+                // Include image data if available
+                if (extractedText) {
+                    payload.image_data = extractedText;
+                }
+                
                 const response = await fetch('/ask', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ question: question }),
+                    body: JSON.stringify(payload),
                 });
 
                 showTypingIndicator(false);
@@ -87,6 +200,11 @@
 
                 const data = await response.json();
                 addMessage(data.answer, 'bot');
+                
+                // Clear the image after sending (optional - remove if you want to keep it)
+                if (currentImageFile) {
+                    clearImage.click();
+                }
 
             } catch (error) {
                 showTypingIndicator(false);

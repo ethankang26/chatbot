@@ -1,7 +1,8 @@
 import os
+import base64
 from supabase import create_client, Client
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -10,6 +11,11 @@ from dotenv import load_dotenv
 import openai
 import numpy as np
 from typing import List, Dict, Any, Optional, Union
+import uuid
+import shutil
+import tempfile
+from PIL import Image
+import pytesseract
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,10 +27,13 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="Mortgage Information Assistant")
 
+# Create temporary directory for image uploads
+TEMP_DIR = tempfile.gettempdir()
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     try:
-        with open("index.html", "r") as f:
+        with open("index.html", "r", encoding="utf-8") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content, status_code=200)
     except FileNotFoundError:
@@ -64,6 +73,7 @@ else:
 # Define request and response models
 class QueryRequest(BaseModel):
     question: str
+    image_data: Optional[str] = None
 
 class QueryResponse(BaseModel):
     answer: str
@@ -73,12 +83,18 @@ class RetrievedContext(BaseModel):
     content: str
     post_id: Optional[int] = None
 
+class ImageUploadResponse(BaseModel):
+    success: bool
+    image_data: str = ""
+    message: str = ""
+
 # Constants
 EMBEDDING_MODEL = "text-embedding-3-small"
-COMPLETION_MODEL = "gpt-3.5-turbo"
+COMPLETION_MODEL = "gpt-4.1-mini"  # Changed to a vision-capable model
+MAX_TOKENS = 500
 EMBEDDING_DIMENSION = 1536  # Dimension of text-embedding-3-small
 SIMILARITY_THRESHOLD = 0.7
-MAX_RESULTS_PER_TABLE = 3
+MAX_RESULTS_PER_TABLE = 5
 MAX_CONTEXT_LENGTH = 3000
 
 # Create embeddings for user query
@@ -165,9 +181,9 @@ async def vector_search(query_embedding: List[float], limit_per_table: int = MAX
         logger.error(f"Error in vector search: {e}")
         return []
 
-# Enhanced get_ai_response function for RAG
-async def get_ai_response(user_question: str, context: List[RetrievedContext]) -> str:
-    """Generate AI response with retrieved context using RAG"""
+# Enhanced get_ai_response function for RAG with vision capabilities
+async def get_ai_response(user_question: str, context: List[RetrievedContext], image_data: Optional[str] = None) -> str:
+    """Generate AI response with retrieved context and optional image using RAG"""
     if not ai_client:
         return "I am currently unable to connect to the AI model to generate a response. Please check your OPENAI_API_KEY in the .env file."
 
@@ -178,12 +194,12 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext]) -
         "1. General mortgage knowledge\n"
         "2. Reddit posts from r/firsttimehomebuyer\n"
         "3. Community comments and discussions\n"
-        "4. Extracted text from mortgage documents shared as images\n\n"
+        "4. Images shared by the user\n\n"
         
         "Response guidelines:\n"
         "- Keep answers brief and to the point (2-3 paragraphs max)\n"
         "- Only include the most relevant information\n"
-        "- Mention sources briefly: 'Based on Reddit posts...' or 'From mortgage documents shared...'\n"
+        "- Mention sources briefly: 'Based on Reddit posts...' or 'From the image shared...'\n"
         "- Focus on key numbers or insights, not exhaustive details\n"
         "- If the user wants more detail, they can ask follow-up questions\n"
         "- Remember this is community-shared content, not official financial advice\n\n"
@@ -193,7 +209,6 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext]) -
     
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_question}
     ]
 
     if context:
@@ -207,15 +222,26 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext]) -
             context_text = context_text[:MAX_CONTEXT_LENGTH] + "..."
         
         context_message = f"Here's relevant information from r/firsttimehomebuyer (provide a concise answer):\n\n{context_text}"
-        messages.insert(1, {"role": "system", "content": context_message})
+        messages.append({"role": "system", "content": context_message})
+    
+    # Add user question with image if provided
+    if image_data and image_data.strip():
+        # The message with image needs to be constructed as an array of content parts
+        user_message_content = [
+            {"type": "text", "text": user_question},
+            {"type": "image_url", "image_url": {"url": image_data}}
+        ]
+        messages.append({"role": "user", "content": user_message_content})
+    else:
+        messages.append({"role": "user", "content": user_question})
 
     try:
-        logger.info(f"Sending request to AI model. User question: '{user_question}', Context provided: {bool(context)}")
+        logger.info(f"Sending request to AI model. User question: '{user_question}', Context provided: {bool(context)}, Image provided: {bool(image_data)}")
         completion = ai_client.chat.completions.create(
             model=COMPLETION_MODEL,
             messages=messages,
             temperature=0.7,
-            max_tokens=300
+            max_tokens=MAX_TOKENS
         )
         response_content = completion.choices[0].message.content.strip()
         return response_content
@@ -248,9 +274,44 @@ async def get_database_stats() -> Dict[str, int]:
         logger.error(f"Error getting database stats: {e}")
         return {"posts": 0, "comments": 0, "attachments": 0}
 
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """Process an uploaded image and return base64 encoded data"""
+    # Check file type
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    allowed_extensions = ['.png', '.jpg', '.jpeg']
+    
+    if file_extension not in allowed_extensions:
+        return ImageUploadResponse(
+            success=False,
+            message=f"File type not supported. Allowed types: {', '.join(allowed_extensions)}"
+        )
+    
+    try:
+        # Read the file content
+        file_content = await file.read()
+        
+        # Convert to base64
+        base64_encoded = base64.b64encode(file_content).decode('utf-8')
+        data_url = f"data:image/{file_extension.replace('.', '')};base64,{base64_encoded}"
+        
+        return ImageUploadResponse(
+            success=True,
+            image_data=data_url,
+            message="Image processed successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing uploaded image: {e}")
+        return ImageUploadResponse(
+            success=False,
+            message=f"Error processing image: {str(e)}"
+        )
+
 @app.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QueryRequest):
     question_text = request.question
+    image_data = request.image_data
     
     if not question_text or question_text.strip() == "":
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -277,8 +338,8 @@ async def ask_question(request: QueryRequest):
     # Perform vector search using embeddings
     search_results = await vector_search(query_embedding)
     
-    # Generate AI response with retrieved context
-    response_message = await get_ai_response(question_text, search_results)
+    # Generate AI response with retrieved context and image if available
+    response_message = await get_ai_response(question_text, search_results, image_data)
     
     return QueryResponse(answer=response_message)
 
