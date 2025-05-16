@@ -19,10 +19,8 @@ logger = logging.getLogger(__name__)
 # CHATBOT ROLE AND GUIDELINES:
 # Role: AI Mortgage Information Assistant
 # You are a helpful AI assistant that can discuss general mortgage topics and 
-# search through extracted text from mortgage-related images posted on r/firsttimehomebuyer.
-# This includes screenshots of loan documents, mortgage statements, closing documents, etc.
-# When answering based on extracted text from Reddit images, state that the info is from 
-# user-shared content and not financial advice.
+# search through Reddit posts, comments, and extracted text from mortgage-related images 
+# posted on r/firsttimehomebuyer. All data is linked by post_id.
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -84,51 +82,46 @@ GENERAL_MORTGAGE_QA = {
 
 # Basic pre-defined information about the database structure
 DATABASE_INFO_QA = {
-    "testkey123xyz": "This is a unique test response for DATABASE_INFO_QA.",
-    "what database tables can you access?": "I can access a 'posts' table with Reddit discussions from r/firsttimehomebuyer, a 'comments' table for Reddit comments, and most importantly, an 'attachments' table containing extracted text from images (like mortgage documents, loan papers, etc.) posted on the subreddit.",
-    "what information is in the posts table?": "The 'posts' table stores information from Reddit posts, including the post title, the main text content (body), the author, a link to the original post (URL), and the Reddit ID. I use this to search for discussions on various mortgage-related topics.",
-    "tell me about the posts table": "The 'posts' table is my source for Reddit discussion data. It includes fields like 'id', 'reddit_id', 'title', 'text', 'author', 'created_utc', 'url', and 'original_url'. I primarily use the 'title' and 'text' for searching.",
-    "what is in the comments table?": "The 'comments' table stores comments from Reddit posts, including the comment body, author, and a link to its parent post.",
-    "what is in the attachments table?": "The 'attachments' table contains extracted text from images posted on r/firsttimehomebuyer. This includes OCR'd text from screenshots of mortgage documents, loan papers, closing statements, rate sheets, and other mortgage-related photos that users share on Reddit.",
-    "what kind of data do you have?": "I have access to Reddit discussions from r/firsttimehomebuyer, including text extracted from images of mortgage documents, loan papers, and other financial documents that users share in their posts. This data helps me answer questions about mortgage experiences and document details shared by the community."
+    "what database tables can you access?": "I can access three related tables: 'posts' (Reddit post text and IDs), 'comments' (comment bodies linked to posts via post_id), and 'attachments' (extracted text from images linked to posts via post_id). All tables are connected by post_id for comprehensive search.",
+    "what information is in the posts table?": "The 'posts' table contains Reddit post text and IDs from r/firsttimehomebuyer. I primarily search the 'text' column for post content and use 'id' to link with comments and attachments.",
+    "tell me about the posts table": "The 'posts' table stores the main Reddit post content. Key columns I use are 'text' (the post content) and 'id' (which becomes the post_id in related tables).",
+    "what is in the comments table?": "The 'comments' table stores Reddit comment bodies with 'post_id' linking them back to the original posts. I search the 'body' column for comment content.",
+    "what is in the attachments table?": "The 'attachments' table contains extracted text from images (OCR'd mortgage documents, loan papers, etc.) with 'post_id' linking them to the original Reddit posts that contained these images.",
+    "what kind of data do you have?": "I have comprehensive mortgage-related data from r/firsttimehomebuyer: original post text, user comments, and text extracted from mortgage document images. All data is linked by post_id, so I can provide context from the full discussion thread including any attached documents.",
+    "how are the tables connected?": "All tables are connected by post_id: Posts have an 'id', Comments have 'post_id' referencing the post, and Attachments have 'post_id' referencing the post. This allows me to find related discussions and documents for any topic."
 }
 
 # Information about the attachments table and extracted text from Reddit images
 ATTACHMENTS_INFO_QA = {
-    "what is in the attachments table?": "The 'attachments' table contains text extracted from images posted on r/firsttimehomebuyer. This includes OCR'd text from mortgage documents, loan papers, closing statements, and other financial documents that Reddit users share as screenshots or photos.",
-    "what kind of attachments do you have?": "I have access to text extracted from various mortgage-related images posted on r/firsttimehomebuyer, such as loan estimates, closing disclosures, rate lock documents, pre-approval letters, and mortgage statements that users share for advice or discussion.",
-    "can you search the extracted text from reddit images?": "Yes! I can search through text extracted from mortgage-related images posted on r/firsttimehomebuyer. This includes information from loan documents, rate sheets, closing papers, and other financial documents that users have shared as photos or screenshots.",
-    "how do you get the extracted text?": "The text is extracted from images using OCR (Optical Character Recognition) technology when users post photos of their mortgage documents on r/firsttimehomebuyer. This extracted text is then stored in our database for searching and analysis."
+    "what is in the attachments table?": "The 'attachments' table contains text extracted from mortgage-related images posted on r/firsttimehomebuyer. Each attachment has a 'post_id' linking it back to the original Reddit post, allowing me to provide full context from the discussion.",
+    "what kind of attachments do you have?": "I have text extracted from various mortgage documents shared as images on Reddit: loan estimates, closing disclosures, rate sheets, pre-approval letters, and mortgage statements. Each is linked to its original post discussion.",
+    "can you search the extracted text from reddit images?": "Yes! I can search through extracted text from mortgage images and also show you the related post and comments for full context, since everything is linked by post_id.",
+    "how do you get the extracted text?": "The text is extracted from images using OCR technology when users post photos of mortgage documents on r/firsttimehomebuyer. This extracted text is stored with the post_id to maintain connection to the original discussion."
 }
 
-# Enhanced get_ai_response function for handling extracted text from Reddit images
+# Enhanced get_ai_response function for handling all three data sources
 async def get_ai_response(user_question: str, context_posts_text: str | None = None) -> str:
     if not ai_client:
         return "I am currently unable to connect to the AI model to generate a response. Please check your OPENAI_API_KEY in the .env file and Uvicorn startup logs for errors."
 
     system_prompt = (
-        "You are an AI Mortgage Information Assistant that helps users understand mortgage-related information. "
-        "You have access to two main sources of information:\n\n"
+        "You are an AI Mortgage Information Assistant. Provide concise, helpful answers about mortgage topics.\n\n"
         
-        "1. Your general knowledge about mortgages, loans, and housing finance\n"
-        "2. Text extracted from mortgage-related images posted on r/firsttimehomebuyer subreddit\n\n"
+        "You have access to:\n"
+        "1. General mortgage knowledge\n"
+        "2. Reddit posts from r/firsttimehomebuyer\n"
+        "3. Community comments and discussions\n"
+        "4. Extracted text from mortgage documents shared as images\n\n"
         
-        "The extracted text comes from OCR processing of photos and screenshots of:\n"
-        "- Loan estimates and closing disclosures\n"
-        "- Mortgage statements and payment schedules\n"
-        "- Rate lock documents and pre-approval letters\n"
-        "- Other mortgage-related documents shared by Reddit users\n\n"
+        "Response guidelines:\n"
+        "- Keep answers brief and to the point (2-3 paragraphs max)\n"
+        "- Only include the most relevant information\n"
+        "- Mention sources briefly: 'Based on Reddit posts...' or 'From mortgage documents shared...'\n"
+        "- Focus on key numbers or insights, not exhaustive details\n"
+        "- If the user wants more detail, they can ask follow-up questions\n"
+        "- Remember this is community-shared content, not official financial advice\n\n"
         
-        "When answering:\n"
-        "- If using extracted text from Reddit images, always clarify the source by saying something like 'Based on mortgage documents shared on r/firsttimehomebuyer...' or 'From Reddit posts showing mortgage paperwork...'\n"
-        "- Remember this is user-shared content from a public forum, not official financial advice\n"
-        "- Help explain mortgage terms and numbers found in the extracted text in simple language\n"
-        "- If you see specific rates, fees, or terms in the extracted text, highlight and explain them\n"
-        "- For general mortgage questions without specific document context, use your knowledge\n"
-        "- Be helpful in interpreting mortgage jargon and explaining what documents mean\n"
-        "- Always remind users that information from Reddit posts should be verified with their own lenders\n\n"
-        
-        "Be conversational, educational, and focus on helping users understand mortgage concepts and document details."
+        "Be conversational and helpful, but keep it concise!"
     )
     
     messages = [
@@ -137,24 +130,20 @@ async def get_ai_response(user_question: str, context_posts_text: str | None = N
     ]
 
     if context_posts_text:
-        # Determine the type of context
-        if "From Reddit image" in context_posts_text or "extracted from image" in context_posts_text.lower():
-            context_label = "text extracted from mortgage-related images posted on r/firsttimehomebuyer"
-        elif "Reddit Post" in context_posts_text:
-            context_label = "discussions from r/firsttimehomebuyer subreddit"
-        else:
-            context_label = "relevant mortgage information from Reddit"
+        # Limit context length to prevent overwhelming responses
+        if len(context_posts_text) > 1000:
+            context_posts_text = context_posts_text[:1000] + "..."
         
-        context_message = f"Here is {context_label} that may help answer the user's question:\n\n---\n{context_posts_text}\n---\n\nPlease use this information to provide a helpful answer, remembering to cite the source appropriately."
+        context_message = f"Here's relevant info from r/firsttimehomebuyer (keep response brief):\n\n{context_posts_text}\n\nProvide a concise answer focusing on key points only."
         messages.insert(1, {"role": "system", "content": context_message})
 
     try:
-        logger.info(f"Sending request to AI model. User question: '{user_question}', Context type: {'Extracted Image Text' if context_posts_text and 'image' in context_posts_text.lower() else 'General' if context_posts_text else 'None'}")
+        logger.info(f"Sending request to AI model. User question: '{user_question}', Context provided: {bool(context_posts_text)}")
         completion = ai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=messages,
             temperature=0.7,
-            max_tokens=400
+            max_tokens=200  # Reduced from 500 to keep responses shorter
         )
         response_content = completion.choices[0].message.content.strip()
         return response_content
@@ -171,42 +160,180 @@ async def get_ai_response(user_question: str, context_posts_text: str | None = N
         logger.error(f"An unexpected error occurred while getting AI response: {e}")
         return "Sorry, an unexpected error occurred while trying to generate an AI response."
 
-# Function to search extracted text from Reddit images
-async def search_extracted_text_from_images(search_term: str, limit: int = 5) -> str | None:
-    """Search the attachments table for extracted text from Reddit images"""
+# Function to search across all three tables (posts, comments, attachments)
+async def search_all_reddit_data(search_term: str, limit: int = 5) -> str | None:
+    """Search posts, comments, and extracted text from images for comprehensive results"""
     if not supabase:
         return None
     
     try:
-        logger.info(f"Searching extracted text from Reddit images for: '{search_term}'")
+        logger.info(f"Searching all Reddit data for: '{search_term}'")
         
-        # Search using ilike for partial text matching in extracted_text
-        query = supabase.table("attachments").select(
-            "id, extracted_text, post_id, created_at"
-        ).ilike("extracted_text", f"%{search_term}%").limit(limit).execute()
+        context_parts = []
         
-        if query.data:
-            # Format context for the AI
-            context_parts = []
-            for attachment in query.data:
-                post_id = attachment.get('post_id', 'Unknown post')
-                text = attachment.get('extracted_text', '')
-                # Extract relevant excerpt around the search term
-                excerpt = extract_relevant_excerpt(text, search_term, max_length=400)
-                context_parts.append(f"From Reddit image (Post ID: {post_id}):\n{excerpt}")
+        # 1. Search Posts table (text column)
+        try:
+            posts_query = supabase.table("posts").select(
+                "id, text"
+            ).ilike("text", f"%{search_term}%").limit(limit).execute()
             
+            if posts_query.data:
+                for post in posts_query.data:
+                    post_id = post.get('id')
+                    text = post.get('text', '')
+                    excerpt = extract_relevant_excerpt(text, search_term, max_length=300)
+                    context_parts.append(f"Reddit Post (ID: {post_id}):\n{excerpt}")
+                logger.info(f"Found {len(posts_query.data)} relevant posts")
+        except Exception as e:
+            logger.error(f"Error searching posts: {e}")
+        
+        # 2. Search Comments table (body column)
+        try:
+            comments_query = supabase.table("comments").select(
+                "post_id, body"
+            ).ilike("body", f"%{search_term}%").limit(limit).execute()
+            
+            if comments_query.data:
+                for comment in comments_query.data:
+                    post_id = comment.get('post_id')
+                    body = comment.get('body', '')
+                    excerpt = extract_relevant_excerpt(body, search_term, max_length=300)
+                    context_parts.append(f"Comment on Post {post_id}:\n{excerpt}")
+                logger.info(f"Found {len(comments_query.data)} relevant comments")
+        except Exception as e:
+            logger.error(f"Error searching comments: {e}")
+        
+        # 3. Search Attachments table (extracted_text column)
+        try:
+            attachments_query = supabase.table("attachments").select(
+                "post_id, extracted_text"
+            ).ilike("extracted_text", f"%{search_term}%").limit(limit).execute()
+            
+            if attachments_query.data:
+                for attachment in attachments_query.data:
+                    post_id = attachment.get('post_id')
+                    text = attachment.get('extracted_text', '')
+                    excerpt = extract_relevant_excerpt(text, search_term, max_length=400)
+                    context_parts.append(f"Extracted from image in Post {post_id}:\n{excerpt}")
+                logger.info(f"Found {len(attachments_query.data)} relevant extracted texts")
+        except Exception as e:
+            logger.error(f"Error searching attachments: {e}")
+        
+        # Combine all results
+        if context_parts:
             context_for_ai = "\n\n".join(context_parts)
-            logger.info(f"Found {len(query.data)} relevant extracted texts from Reddit images")
+            logger.info(f"Total search results found: {len(context_parts)} items")
             return context_for_ai
         else:
-            logger.info(f"No extracted text found for '{search_term}'")
+            logger.info(f"No results found across all tables for '{search_term}'")
             return None
             
     except Exception as e:
-        logger.error(f"Error searching extracted text from images: {e}")
+        logger.error(f"Error in comprehensive search: {e}")
         return None
 
-# Function to extract relevant excerpts from text
+# Function to search for mortgage-specific information across all tables
+async def search_mortgage_info_comprehensive(search_term: str) -> str | None:
+    """Search for mortgage-specific information across posts, comments, and attachments"""
+    if not supabase:
+        return None
+    
+    try:
+        logger.info(f"Comprehensive mortgage search for: '{search_term}'")
+        
+        # Define mortgage-related search conditions
+        mortgage_conditions = [
+            f"text.ilike.%{search_term}%",
+            f"text.ilike.%mortgage%",
+            f"text.ilike.%loan%",
+            f"text.ilike.%rate%",
+            f"text.ilike.%payment%"
+        ]
+        
+        context_parts = []
+        
+        # 1. Search Posts with mortgage focus
+        try:
+            posts_query = supabase.table("posts").select(
+                "id, text"
+            ).or_(",".join(mortgage_conditions)).limit(3).execute()
+            
+            if posts_query.data:
+                for post in posts_query.data:
+                    post_id = post.get('id')
+                    text = post.get('text', '')
+                    excerpt = extract_relevant_excerpt(text, search_term, max_length=350)
+                    context_parts.append(f"Reddit Post (ID: {post_id}):\n{excerpt}")
+        except Exception as e:
+            logger.error(f"Error in mortgage search - posts: {e}")
+        
+        # 2. Search Comments with mortgage focus
+        try:
+            comment_conditions = [condition.replace("text", "body") for condition in mortgage_conditions]
+            comments_query = supabase.table("comments").select(
+                "post_id, body"
+            ).or_(",".join(comment_conditions)).limit(3).execute()
+            
+            if comments_query.data:
+                for comment in comments_query.data:
+                    post_id = comment.get('post_id')
+                    body = comment.get('body', '')
+                    excerpt = extract_relevant_excerpt(body, search_term, max_length=350)
+                    context_parts.append(f"Comment on Post {post_id}:\n{excerpt}")
+        except Exception as e:
+            logger.error(f"Error in mortgage search - comments: {e}")
+        
+        # 3. Search Attachments with mortgage focus
+        try:
+            attachment_conditions = [condition.replace("text", "extracted_text") for condition in mortgage_conditions]
+            attachments_query = supabase.table("attachments").select(
+                "post_id, extracted_text"
+            ).or_(",".join(attachment_conditions)).limit(3).execute()
+            
+            if attachments_query.data:
+                for attachment in attachments_query.data:
+                    post_id = attachment.get('post_id')
+                    text = attachment.get('extracted_text', '')
+                    excerpt = extract_relevant_excerpt(text, search_term, max_length=400)
+                    context_parts.append(f"Extracted from mortgage document in Post {post_id}:\n{excerpt}")
+        except Exception as e:
+            logger.error(f"Error in mortgage search - attachments: {e}")
+        
+        if context_parts:
+            context_for_ai = "\n\n".join(context_parts)
+            logger.info(f"Mortgage search found: {len(context_parts)} relevant items")
+            return context_for_ai
+        else:
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error in comprehensive mortgage search: {e}")
+        return None
+
+# Function to get dynamic database statistics
+async def get_database_stats(stat_type: str) -> str:
+    """Get real-time database statistics"""
+    if not supabase:
+        return "Unable to connect to database to get statistics."
+    
+    try:
+        if stat_type == "post_count":
+            result = supabase.table("posts").select("id", count="exact").execute()
+            count = result.count
+            return f"There are currently {count} posts in the database."
+        elif stat_type == "comment_count":
+            result = supabase.table("comments").select("post_id", count="exact").execute()
+            count = result.count
+            return f"There are currently {count} comments in the database."
+        elif stat_type == "attachment_count":
+            result = supabase.table("attachments").select("post_id", count="exact").execute()
+            count = result.count
+            return f"There are currently {count} attachments with extracted text in the database."
+        else:
+            return "Unknown statistic requested."
+    except Exception as e:
+        logger.error(f"Error getting database stats: {e}")
+        return f"Error retrieving database statistics: {e}"
 def extract_relevant_excerpt(text: str, search_term: str, max_length: int = 400) -> str:
     """Extract relevant excerpt from text around the search term"""
     if not text:
@@ -238,46 +365,7 @@ def extract_relevant_excerpt(text: str, search_term: str, max_length: int = 400)
     # If no specific match, return beginning of text
     return text[:max_length] + ("..." if len(text) > max_length else "")
 
-# Function to search for mortgage-specific information in extracted image text
-async def search_mortgage_info_in_images(search_term: str) -> str | None:
-    """Search for mortgage-specific information in extracted text from Reddit images"""
-    if not supabase:
-        return None
-    
-    try:
-        logger.info(f"Searching for mortgage info in Reddit images: '{search_term}'")
-        
-        # Search for mortgage-related content with the user's search term
-        query = supabase.table("attachments").select(
-            "id, extracted_text, post_id, created_at"
-        ).or_(
-            f"extracted_text.ilike.%{search_term}%,"
-            f"extracted_text.ilike.%mortgage%,"
-            f"extracted_text.ilike.%loan%,"
-            f"extracted_text.ilike.%rate%,"
-            f"extracted_text.ilike.%apr%,"
-            f"extracted_text.ilike.%payment%"
-        ).limit(5).execute()
-        
-        if query.data:
-            context_parts = []
-            for attachment in query.data:
-                post_id = attachment.get('post_id', 'Unknown post')
-                text = attachment.get('extracted_text', '')
-                excerpt = extract_relevant_excerpt(text, search_term, max_length=500)
-                context_parts.append(f"From Reddit image extracted from mortgage document (Post ID: {post_id}):\n{excerpt}")
-            
-            context_for_ai = "\n\n".join(context_parts)
-            logger.info(f"Found {len(query.data)} mortgage-related extracted texts")
-            return context_for_ai
-        else:
-            return None
-            
-    except Exception as e:
-        logger.error(f"Error searching mortgage info in extracted texts: {e}")
-        return None
-
-# Enhanced ask_question function with support for extracted text from Reddit images
+# Enhanced ask_question function with comprehensive search across all tables
 @app.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QueryRequest):
     question_text = request.question
@@ -297,52 +385,44 @@ async def ask_question(request: QueryRequest):
     if not response_message and question_normalized in ATTACHMENTS_INFO_QA:
         response_message = ATTACHMENTS_INFO_QA[question_normalized]
 
-    # 4. If not a predefined answer, search extracted text and use AI
+    # 4. If not a predefined answer, check for database statistics requests
     if not response_message:
-        # Check if this is asking about images, documents, or extracted text
-        image_triggers = [
-            "image", "photo", "screenshot", "picture", "document", "extracted text",
-            "ocr", "attachment", "mortgage document", "loan document"
-        ]
-        
+        # Check for database statistics queries
+        if "how many posts" in question_normalized or "post count" in question_normalized:
+            response_message = await get_database_stats("post_count")
+        elif "how many comments" in question_normalized or "comment count" in question_normalized:
+            response_message = await get_database_stats("comment_count")
+        elif "how many attachments" in question_normalized or "attachment count" in question_normalized:
+            response_message = await get_database_stats("attachment_count")
+
+    # 5. If still not a predefined answer, search all tables and use AI
+    # 5. If still not a predefined answer, search all tables and use AI
+    if not response_message:
         # Check if it's a mortgage-related query
         mortgage_triggers = [
             "mortgage", "loan", "interest", "rate", "payment", "closing",
-            "down payment", "refinance", "apr", "principal", "escrow", "pmi"
+            "down payment", "refinance", "apr", "principal", "escrow", "pmi",
+            "credit score", "lender", "preapproval", "closing costs"
         ]
         
-        is_image_query = any(trigger in question_normalized for trigger in image_triggers)
         is_mortgage_query = any(trigger in question_normalized for trigger in mortgage_triggers)
         
-        # Search strategy based on query type
-        if is_image_query or is_mortgage_query:
-            # Search in extracted text from Reddit images
-            context_for_ai = await search_mortgage_info_in_images(question_text)
-            
-            if not context_for_ai:
-                # Fallback to general extracted text search
-                context_for_ai = await search_extracted_text_from_images(question_text)
+        # Use comprehensive search strategy
+        if is_mortgage_query:
+            # Use mortgage-focused search across all tables
+            context_for_ai = await search_mortgage_info_comprehensive(question_text)
         else:
-            # For general questions, still check extracted text first
-            context_for_ai = await search_extracted_text_from_images(question_text)
-            
-            # If no extracted text context found, try the Reddit posts table as fallback
-            if not context_for_ai and supabase:
-                try:
-                    query = supabase.table("posts").select("title, text").text_search("fts_document", f"'{question_text}'").limit(3).execute()
-                    if query.data:
-                        context_for_ai = "\n".join([f"Reddit Post - Title: {p.get('title', '')}\nText: {p.get('text', '')[:300]}..." for p in query.data])
-                except Exception as e:
-                    logger.error(f"Error searching posts table: {e}")
+            # Use general search across all tables
+            context_for_ai = await search_all_reddit_data(question_text)
 
         # Always get AI response with or without context
         if supabase is None:
-            response_message = "I am unable to connect to the database to search for extracted text from images. I can provide general mortgage information though."
-        
-        # Generate AI response with context if available
-        response_message = await get_ai_response(question_text, context_posts_text=context_for_ai)
+            response_message = "I am unable to connect to the database to search for information. I can provide general mortgage information though."
+        else:
+            # Generate AI response with context if available
+            response_message = await get_ai_response(question_text, context_posts_text=context_for_ai)
 
-    # 5. Fallback if somehow still empty
+    # 6. Fallback if somehow still empty
     if not response_message:
         response_message = "I'm having a bit of trouble thinking right now. Please try asking again."
 
@@ -354,6 +434,9 @@ async def ask_question(request: QueryRequest):
 #    SUPABASE_URL=your_supabase_url_here
 #    SUPABASE_KEY=your_supabase_anon_key_here
 #    OPENAI_API_KEY=your_openai_api_key_here
-# 2. Ensure your 'attachments' table has an 'extracted_text' column with OCR'd text from Reddit images
+# 2. Ensure your tables are set up correctly:
+#    - posts: with 'id' and 'text' columns
+#    - comments: with 'post_id' and 'body' columns  
+#    - attachments: with 'post_id' and 'extracted_text' columns
 # 3. Install dependencies: pip install -r requirements.txt
 # 4. Run the app with: uvicorn chatbot:app --reload
