@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mortgage Chatbot</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        #chat-container { width: 100%; max-width: 600px; background-color: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; display: flex; flex-direction: column; height: 80vh; }
+        #chat-output { flex-grow: 1; padding: 20px; overflow-y: auto; border-bottom: 1px solid #ddd; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; line-height: 1.4; }
+        .user-message { background-color: #007bff; color: white; margin-left: auto; width: fit-content; max-width: 70%; text-align: left; }
+        .bot-message { background-color: #e9e9eb; color: #333; width: fit-content; max-width: 70%; text-align: left; }
+        #input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
+        #question-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-right: 10px; }
+        #send-button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #send-button:hover { background-color: #0056b3; }
+        .typing-indicator { font-style: italic; color: #aaa; padding: 5px 0; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-output">
+            <div class="bot-message">Hello! Ask me about mortgages or search Reddit discussions.</div>
+        </div>
+        <div id="input-area">
+            <input type="text" id="question-input" placeholder="Ask a question...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatOutput = document.getElementById('chat-output');
+        const questionInput = document.getElementById('question-input');
+        const sendButton = document.getElementById('send-button');
+
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
+            messageDiv.textContent = text;
+            chatOutput.appendChild(messageDiv);
+            chatOutput.scrollTop = chatOutput.scrollHeight; // Scroll to bottom
+        }
+
+        function showTypingIndicator(show) {
+            let typingIndicator = document.getElementById('typing');
+            if (show) {
+                if (!typingIndicator) {
+                    typingIndicator = document.createElement('div');
+                    typingIndicator.id = 'typing';
+                    typingIndicator.classList.add('typing-indicator');
+                    typingIndicator.textContent = 'Bot is typing...';
+                    chatOutput.appendChild(typingIndicator);
+                    chatOutput.scrollTop = chatOutput.scrollHeight;
+                }
+            } else {
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+            }
+        }
+
+        async function sendMessage() {
+            const question = questionInput.value.trim();
+            if (!question) return;
+
+            addMessage(question, 'user');
+            questionInput.value = ''; // Clear input
+            showTypingIndicator(true);
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question: question }),
+                });
+
+                showTypingIndicator(false);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ answer: 'Sorry, there was an error communicating with the server.' }));
+                    addMessage(errorData.answer || 'An unknown error occurred.', 'bot');
+                    return;
+                }
+
+                const data = await response.json();
+                addMessage(data.answer, 'bot');
+
+            } catch (error) {
+                showTypingIndicator(false);
+                console.error('Error sending message:', error);
+                addMessage('Sorry, I couldn\'t connect. Please check my server or your connection.', 'bot');
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        questionInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
