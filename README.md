@@ -35,6 +35,10 @@ This project is a Python-based chatbot that uses FastAPI for the web framework a
     supabase
     python-dotenv
     openai
+    numpy
+    pillow
+    pytesseract
+    python-multipart
     ```
     Then run:
     ```bash
