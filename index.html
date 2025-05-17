@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<<<<<<< HEAD
     <title>RateMate - Mortgage Assistant</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -574,39 +573,11 @@
     <footer>
         &copy; 2023 RateMate | Your Mortgage Assistant
     </footer>
-=======
-    <title>Mortgage Chatbot</title>
-    <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        #chat-container { width: 100%; max-width: 600px; background-color: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; display: flex; flex-direction: column; height: 80vh; }
-        #chat-output { flex-grow: 1; padding: 20px; overflow-y: auto; border-bottom: 1px solid #ddd; }
-        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; line-height: 1.4; }
-        .user-message { background-color: #007bff; color: white; margin-left: auto; width: fit-content; max-width: 70%; text-align: left; }
-        .bot-message { background-color: #e9e9eb; color: #333; width: fit-content; max-width: 70%; text-align: left; }
-        #input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
-        #question-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-right: 10px; }
-        #send-button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #send-button:hover { background-color: #0056b3; }
-        .typing-indicator { font-style: italic; color: #aaa; padding: 5px 0; }
-    </style>
-</head>
-<body>
-    <div id="chat-container">
-        <div id="chat-output">
-            <div class="bot-message">Hello! Ask me about mortgages or search Reddit discussions.</div>
-        </div>
-        <div id="input-area">
-            <input type="text" id="question-input" placeholder="Ask a question...">
-            <button id="send-button">Send</button>
-        </div>
-    </div>
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
 
     <script>
         const chatOutput = document.getElementById('chat-output');
         const questionInput = document.getElementById('question-input');
         const sendButton = document.getElementById('send-button');
-<<<<<<< HEAD
         const fileInput = document.getElementById('file-input');
         const uploadButton = document.getElementById('upload-button');
         const imagePreview = document.getElementById('image-preview');
@@ -775,38 +746,11 @@
                 console.error('Error uploading image:', error);
                 imageInfo.innerHTML = `<strong>${imageFile.name}</strong><br>Error processing image`;
                 extractedText = null;
-=======
-
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
-            messageDiv.textContent = text;
-            chatOutput.appendChild(messageDiv);
-            chatOutput.scrollTop = chatOutput.scrollHeight; // Scroll to bottom
-        }
-
-        function showTypingIndicator(show) {
-            let typingIndicator = document.getElementById('typing');
-            if (show) {
-                if (!typingIndicator) {
-                    typingIndicator = document.createElement('div');
-                    typingIndicator.id = 'typing';
-                    typingIndicator.classList.add('typing-indicator');
-                    typingIndicator.textContent = 'Bot is typing...';
-                    chatOutput.appendChild(typingIndicator);
-                    chatOutput.scrollTop = chatOutput.scrollHeight;
-                }
-            } else {
-                if (typingIndicator) {
-                    typingIndicator.remove();
-                }
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
             }
         }
 
         async function sendMessage() {
             const question = questionInput.value.trim();
-<<<<<<< HEAD
             if (!question && !currentImageFile) return;
 
             // Create image URL for preview if we have an image
@@ -826,31 +770,15 @@
                     payload.image_data = extractedText;
                 }
                 
-=======
-            if (!question) return;
-
-            addMessage(question, 'user');
-            questionInput.value = ''; // Clear input
-            showTypingIndicator(true);
-
-            try {
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
                 const response = await fetch('/ask', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-<<<<<<< HEAD
                     body: JSON.stringify(payload),
                 });
 
                 removeTypingIndicator();
-=======
-                    body: JSON.stringify({ question: question }),
-                });
-
-                showTypingIndicator(false);
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ answer: 'Sorry, there was an error communicating with the server.' }));
@@ -860,7 +788,6 @@
 
                 const data = await response.json();
                 addMessage(data.answer, 'bot');
-<<<<<<< HEAD
                 
                 // Clear the image after sending
                 if (currentImageFile) {
@@ -869,18 +796,12 @@
 
             } catch (error) {
                 removeTypingIndicator();
-=======
-
-            } catch (error) {
-                showTypingIndicator(false);
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
                 console.error('Error sending message:', error);
                 addMessage('Sorry, I couldn\'t connect. Please check my server or your connection.', 'bot');
             }
         }
 
         sendButton.addEventListener('click', sendMessage);
-<<<<<<< HEAD
         
         questionInput.addEventListener('keypress', function(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -906,13 +827,6 @@
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
         });
-=======
-        questionInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
     </script>
 </body>
 </html> 
