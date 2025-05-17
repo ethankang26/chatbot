@@ -1,13 +1,9 @@
-<<<<<<< HEAD
-fastapi
-uvicorn[standard]
-supabase
-python-dotenv
-openai
-=======
 supabase
 fastapi
 uvicorn
 python-dotenv
-openai 
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
+openai
+numpy
+pillow
+pytesseract
+python-multipart
