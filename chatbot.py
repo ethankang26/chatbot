@@ -1,7 +1,7 @@
 import os
 import base64
 from supabase import create_client, Client
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form, Depends, Cookie, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -29,6 +29,9 @@ app = FastAPI(title="Mortgage Information Assistant")
 
 # Create temporary directory for image uploads
 TEMP_DIR = tempfile.gettempdir()
+
+# Store conversation history (in memory for simplicity)
+conversation_histories: Dict[str, List[Dict[str, str]]] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -188,13 +191,17 @@ async def vector_search(query_embedding: List[float], limit_per_table: int = MAX
         return results
         
     except Exception as e:
-        print("poopy")
         logger.error(f"Error in vector search: {e}")
         return []
 
 # Enhanced get_ai_response function for RAG with vision capabilities
-async def get_ai_response(user_question: str, context: List[RetrievedContext], image_data: Optional[str] = None) -> str:
-    """Generate AI response with retrieved context and optional image using RAG"""
+async def get_ai_response(
+    user_question: str, 
+    context: List[RetrievedContext], 
+    image_data: Optional[str] = None,
+    conversation_history: Optional[List[Dict[str, str]]] = None
+) -> str:
+    """Generate AI response with retrieved context, optional image, and conversation history"""
     if not ai_client:
         return "I am currently unable to connect to the AI model to generate a response. Please check your OPENAI_API_KEY in the .env file."
 
@@ -223,6 +230,13 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext], i
         {"role": "system", "content": system_prompt},
     ]
 
+    # Add conversation history (if available)
+    if conversation_history:
+        # Only include up to the last 10 messages to avoid token limits
+        for message in conversation_history[-10:]:
+            if message["role"] != "system":  # Skip system messages in history
+                messages.append(message)
+
     if context:
         # Format context for the AI
         context_text = ""
@@ -244,11 +258,12 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext], i
             {"type": "image_url", "image_url": {"url": image_data}}
         ]
         messages.append({"role": "user", "content": user_message_content})
-    else:
+    elif not conversation_history:
+        # Only add the user question if it's not already in the conversation history
         messages.append({"role": "user", "content": user_question})
 
     try:
-        logger.info(f"Sending request to AI model. User question: '{user_question}', Context provided: {bool(context)}, Image provided: {bool(image_data)}")
+        logger.info(f"Sending request to AI model with conversation history. User question: '{user_question}'")
         completion = ai_client.chat.completions.create(
             model=COMPLETION_MODEL,
             messages=messages,
@@ -321,12 +336,28 @@ async def upload_image(file: UploadFile = File(...)):
         )
 
 @app.post("/ask", response_model=QueryResponse)
-async def ask_question(request: QueryRequest):
+async def ask_question(
+    request: QueryRequest,
+    response: Response,
+    session_id: Optional[str] = Cookie(None)
+):
+    # Generate a session ID if not provided
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie(key="session_id", value=session_id)
+    
+    # Get or create conversation history for this session
+    if session_id not in conversation_histories:
+        conversation_histories[session_id] = []
+    
     question_text = request.question
     image_data = request.image_data
     
     if not question_text or question_text.strip() == "":
         raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    # Add user message to history
+    conversation_histories[session_id].append({"role": "user", "content": question_text})
     
     # Check for database statistics requests
     if any(phrase in question_text.lower() for phrase in ["database stats", "how many posts", "how many comments", "how many attachments"]):
@@ -337,6 +368,8 @@ async def ask_question(request: QueryRequest):
             f"• Comments: {stats['comments']}\n"
             f"• Attachments: {stats['attachments']}"
         )
+        # Add response to history
+        conversation_histories[session_id].append({"role": "assistant", "content": stats_response})
         return QueryResponse(answer=stats_response)
     
     # Generate embedding for the question
@@ -345,13 +378,18 @@ async def ask_question(request: QueryRequest):
     if not query_embedding:
         # Fallback to general response if embedding generation fails
         fallback_response = "I'm having trouble processing your question semantically. I can still provide general mortgage information, but personalized results are currently unavailable."
+        # Add response to history
+        conversation_histories[session_id].append({"role": "assistant", "content": fallback_response})
         return QueryResponse(answer=fallback_response)
     
     # Perform vector search using embeddings
     search_results = await vector_search(query_embedding)
     
-    # Generate AI response with retrieved context and image if available
-    response_message = await get_ai_response(question_text, search_results, image_data)
+    # Generate AI response with retrieved context, image, and conversation history
+    response_message = await get_ai_response(question_text, search_results, image_data, conversation_histories[session_id])
+    
+    # Add response to history
+    conversation_histories[session_id].append({"role": "assistant", "content": response_message})
     
     return QueryResponse(answer=response_message)
 
