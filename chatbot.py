@@ -93,7 +93,7 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 COMPLETION_MODEL = "gpt-4.1-mini"  # Changed to a vision-capable model
 MAX_TOKENS = 500
 EMBEDDING_DIMENSION = 1536  # Dimension of text-embedding-3-small
-SIMILARITY_THRESHOLD = 0.7
+SIMILARITY_THRESHOLD = 0
 MAX_RESULTS_PER_TABLE = 5
 MAX_CONTEXT_LENGTH = 3000
 
@@ -133,10 +133,13 @@ async def vector_search(query_embedding: List[float], limit_per_table: int = MAX
         ).execute()
         
         if posts_rpc.data:
+            print("Post similarity scores:")
             for post in posts_rpc.data:
                 post_id = post.get('id')
                 text = post.get('text', '')
                 title = post.get('title', 'Reddit Post')
+                similarity = post.get('similarity', 'N/A')  # Extract similarity score
+                print(f"Post {post_id}: {similarity}")
                 results.append(RetrievedContext(
                     source=f"Reddit Post: {title}",
                     content=text,
@@ -150,9 +153,12 @@ async def vector_search(query_embedding: List[float], limit_per_table: int = MAX
         ).execute()
         
         if comments_rpc.data:
+            print("Comment similarity scores:")
             for comment in comments_rpc.data:
                 post_id = comment.get('post_id')
                 body = comment.get('body', '')
+                similarity = comment.get('similarity', 'N/A')  # Extract similarity score
+                print(f"Comment for Post {post_id}: {similarity}")
                 results.append(RetrievedContext(
                     source=f"Comment on Post {post_id}",
                     content=body,
@@ -166,18 +172,23 @@ async def vector_search(query_embedding: List[float], limit_per_table: int = MAX
         ).execute()
         
         if attachments_rpc.data:
+            print("Attachment similarity scores:")
             for attachment in attachments_rpc.data:
                 post_id = attachment.get('post_id')
                 text = attachment.get('extracted_text', '')
+                similarity = attachment.get('similarity', 'N/A')  # Extract similarity score
+                print(f"Attachment for Post {post_id}: {similarity}")
                 results.append(RetrievedContext(
                     source=f"Document from Post {post_id}",
                     content=text,
                     post_id=post_id
                 ))
+        print(results,"nopoppop")
         
         return results
         
     except Exception as e:
+        print("poopy")
         logger.error(f"Error in vector search: {e}")
         return []
 
@@ -195,6 +206,7 @@ async def get_ai_response(user_question: str, context: List[RetrievedContext], i
         "2. Reddit posts from r/firsttimehomebuyer\n"
         "3. Community comments and discussions\n"
         "4. Images shared by the user\n\n"
+        "5. data from the database\n\n"
         
         "Response guidelines:\n"
         "- Keep answers brief and to the point (2-3 paragraphs max)\n"
