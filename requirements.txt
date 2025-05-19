@@ -1,5 +1,9 @@
-supabase
 fastapi
-uvicorn
+uvicorn[standard]
+supabase
 python-dotenv
-openai 
+openai
+numpy
+pillow
+pytesseract
+python-multipart
