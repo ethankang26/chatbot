@@ -81,8 +81,6 @@ The application will typically be available at `http://127.0.0.1:8000`. You can 
 -   `README.md`: This file.
 -   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
 
-<<<<<<< HEAD
-=======
 ## Supabase Full-Text Search (FTS) Setup
 
 For the Reddit post searching functionality to work effectively, ensure you have set up Full-Text Search on your `posts` table in Supabase. This typically involves:
@@ -92,4 +90,3 @@ For the Reddit post searching functionality to work effectively, ensure you have
 3.  Creating an index on this `tsvector` column.
 
 Refer to the Supabase documentation for detailed instructions on setting up FTS. The application currently uses `fts_document` as the tsvector column name for searches. 
->>>>>>> df68b0ae97619e32bdf8fecc171828f5721027a3
